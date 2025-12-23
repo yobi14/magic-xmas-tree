@@ -1,30 +1,37 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-<title>粒子圣诞树</title>
-<style>
-html, body {
-    margin: 0;
-    padding: 0;
-    background: radial-gradient(circle at top, #02111d, #000);
-    overflow: hidden;
-    touch-action: none;
-}
-canvas {
-    display: block;
-}
-</style>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+    <title>3D 魔法粒子圣诞树</title>
+    <style>
+        html, body { margin: 0; padding: 0; background: #000; overflow: hidden; touch-action: none; }
+        canvas { display: block; }
+        #hint {
+            position: absolute; bottom: 20px; width: 100%; text-align: center;
+            color: rgba(255,255,255,0.4); font-family: sans-serif; pointer-events: none;
+        }
+    </style>
 </head>
 <body>
-<canvas id="canvas"></canvas>
+    <div id="hint">左右滑动旋转 3D 视角</div>
+    <canvas id="canvas"></canvas>
 
 <script>
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
 
 let W, H;
+let cameraRotation = 0; // 相机旋转角度
+let targetRotation = 0;
+const particles = [];
+const COUNT = 1800; // 粒子数量增加
+
+// 3D 投影配置
+const perspective = 500; 
+const treeRadius = 220;
+const treeHeight = 450;
+
 function resize() {
     W = canvas.width = window.innerWidth;
     H = canvas.height = window.innerHeight;
@@ -32,110 +39,106 @@ function resize() {
 resize();
 window.addEventListener("resize", resize);
 
-const particles = [];
-const TREE_HEIGHT = 420;
-const TREE_WIDTH = 260;
-const COUNT = 1200;
-
-const centerX = () => W / 2;
-const baseY = () => H * 0.8;
-
-let touch = { x: -9999, y: -9999 };
-
+let mouseX = 0;
 document.addEventListener("mousemove", e => {
-    touch.x = e.clientX;
-    touch.y = e.clientY;
+    targetRotation = (e.clientX - W / 2) * 0.005;
 });
 document.addEventListener("touchmove", e => {
-    touch.x = e.touches[0].clientX;
-    touch.y = e.touches[0].clientY;
+    targetRotation = (e.touches[0].clientX - W / 2) * 0.005;
 }, { passive: false });
-document.addEventListener("touchend", () => {
-    touch.x = touch.y = -9999;
-});
 
 class Particle {
     constructor() {
-        this.reset();
-        this.x = Math.random() * W;
-        this.y = Math.random() * H;
-    }
-
-    reset() {
-        const t = Math.random();
-        const y = baseY() - t * TREE_HEIGHT;
-        const halfWidth = (1 - t) * TREE_WIDTH * 0.5;
-        const x = centerX() + (Math.random() * 2 - 1) * halfWidth;
-
-        this.tx = x;
-        this.ty = y;
-        this.x = x + (Math.random() - 0.5) * 200;
-        this.y = y + (Math.random() - 0.5) * 200;
-
+        // 3D 空间坐标
+        const t = Math.random(); // 高度比例
+        const angle = Math.random() * Math.PI * 2; // 绕树的角度
+        const radius = (1 - t) * treeRadius; // 越往上半径越小
+        
+        this.lx = Math.cos(angle) * radius; // 本地 X
+        this.ly = (t * treeHeight) - treeHeight / 2; // 本地 Y (居中)
+        this.lz = Math.sin(angle) * radius; // 本地 Z
+        
+        this.color = `hsla(${120 + Math.random() * 40}, 100%, 70%,`; // 绿色系
+        if(Math.random() > 0.9) this.color = `hsla(${Math.random() * 50 + 10}, 100%, 80%,`; // 金色装饰点
+        
         this.size = Math.random() * 2 + 1;
-        this.phase = Math.random() * Math.PI * 2;
-        this.colorOffset = Math.random() * 360;
-    }
-
-    update() {
-        const dx = this.tx - this.x;
-        const dy = this.ty - this.y;
-        this.x += dx * 0.05;
-        this.y += dy * 0.05;
-
-        const distX = this.x - touch.x;
-        const distY = this.y - touch.y;
-        const dist = Math.sqrt(distX * distX + distY * distY);
-        if (dist < 120) {
-            this.x += distX * 0.05;
-            this.y += distY * 0.05;
-        }
-
-        this.phase += 0.03;
+        this.offset = Math.random() * Math.PI * 2;
     }
 
     draw() {
-        const glow = Math.sin(this.phase) * 0.5 + 0.5;
+        // 1. 应用相机旋转 (绕 Y 轴)
+        const cosR = Math.cos(cameraRotation);
+        const sinR = Math.sin(cameraRotation);
+        
+        // 旋转后的坐标
+        const rx = this.lx * cosR - this.lz * sinR;
+        const rz = this.lx * sinR + this.lz * cosR;
+        const ry = this.ly;
+
+        // 2. 3D 投影到 2D 平面
+        const scale = perspective / (perspective + rz + treeRadius);
+        const screenX = rx * scale + W / 2;
+        const screenY = ry * scale + H * 0.6; // 稍微下移
+        
+        // 3. 渲染效果
+        const opacity = (rz + treeRadius) / (treeRadius * 2); // 简单的深度感
+        const glow = Math.sin(Date.now() * 0.002 + this.offset) * 0.5 + 0.5;
+
         ctx.beginPath();
-        ctx.fillStyle = `hsla(${this.colorOffset + this.y * 0.2},100%,70%,${0.6 + glow})`;
-        ctx.arc(this.x, this.y, this.size + glow * 1.5, 0, Math.PI * 2);
+        ctx.fillStyle = this.color + (0.3 + glow * 0.7) + ")";
+        
+        // 越靠近相机的点越大
+        const drawSize = this.size * scale * (1 + glow * 0.5);
+        ctx.arc(screenX, screenY, drawSize, 0, Math.PI * 2);
         ctx.fill();
     }
 }
 
-for (let i = 0; i < COUNT; i++) {
-    particles.push(new Particle());
-}
+// 初始化
+for (let i = 0; i < COUNT; i++) particles.push(new Particle());
 
 function drawStar() {
+    const t = -treeHeight / 2 - 40;
+    const cosR = Math.cos(cameraRotation * 2); // 星星独立旋转
+    const scale = perspective / (perspective + treeRadius);
+    const screenX = W / 2;
+    const screenY = t * scale + H * 0.6;
+
     ctx.save();
-    ctx.translate(centerX(), baseY() - TREE_HEIGHT - 30);
-    ctx.rotate(Date.now() * 0.002);
+    ctx.translate(screenX, screenY);
+    ctx.rotate(Date.now() * 0.001);
+    ctx.shadowBlur = 20;
+    ctx.shadowColor = "gold";
     ctx.fillStyle = "gold";
-    ctx.beginPath();
-    for (let i = 0; i < 5; i++) {
-        ctx.lineTo(0, -20);
-        ctx.translate(0, -20);
-        ctx.rotate((Math.PI * 2) / 10);
-        ctx.lineTo(0, 20);
-        ctx.translate(0, 20);
-        ctx.rotate(-(Math.PI * 6) / 10);
-    }
-    ctx.fill();
+    ctx.font = "40px serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("⭐", 0, 0);
     ctx.restore();
 }
 
 function animate() {
-    ctx.clearRect(0, 0, W, H);
+    // 渐淡效果营造粒子拖尾感
+    ctx.fillStyle = "rgba(0, 0, 0, 0.15)";
+    ctx.fillRect(0, 0, W, H);
 
-    particles.forEach(p => {
-        p.update();
-        p.draw();
-    });
+    // 平滑相机旋转
+    cameraRotation += (targetRotation - cameraRotation) * 0.05;
+    cameraRotation += 0.005; // 自动匀速自转
 
+    // 开启高亮叠加模式，增加“闪烁”感
+    ctx.globalCompositeOperation = "lighter";
+    
+    // 为了 3D 遮挡感，我们先对粒子按深度排序（简单模拟）
+    // 这里的粒子是实时计算投影的，为了炫酷效果直接绘制
+    particles.forEach(p => p.draw());
+
+    ctx.globalCompositeOperation = "source-over";
     drawStar();
+    
     requestAnimationFrame(animate);
 }
+
 animate();
 </script>
 </body>
