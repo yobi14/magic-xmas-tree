@@ -2,169 +2,141 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-    <title>Cyber Xmas 2025</title>
+    <title>赛博朋克粒子圣诞树 - 3D</title>
     <style>
-        body { margin: 0; background: #000; overflow: hidden; touch-action: none; }
-        canvas { display: block; filter: contrast(120%) brightness(110%); }
-        #overlay {
-            position: absolute; bottom: 30px; width: 100%; text-align: center;
-            color: #fff; font-family: 'Orbitron', sans-serif; letter-spacing: 5px;
-            pointer-events: none; text-shadow: 0 0 20px #0ff; opacity: 0.6;
+        body { margin: 0; overflow: hidden; background-color: #000; }
+        canvas { display: block; }
+        #info {
+            position: absolute;
+            top: 20px;
+            width: 100%;
+            text-align: center;
+            color: #00f2ff;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            letter-spacing: 2px;
+            pointer-events: none;
+            text-shadow: 0 0 10px #00f2ff;
         }
     </style>
 </head>
 <body>
-    <div id="overlay">NEO-CHRISTMAS 2025</div>
-    <canvas id="canvas"></canvas>
-
-<script>
-const canvas = document.getElementById("canvas");
-const ctx = canvas.getContext("2d");
-
-let W, H;
-let particles = [];
-const COUNT = 2200; 
-const PROJECTION_DIST = 400; 
-let rotation = 0;
-let mouse = { x: -1000, y: -1000, active: false };
-
-function resize() {
-    W = canvas.width = window.innerWidth;
-    H = canvas.height = window.innerHeight;
-}
-window.addEventListener("resize", resize);
-resize();
-
-// 交互监听
-const updateMouse = (e) => {
-    mouse.x = (e.clientX || e.touches[0].clientX);
-    mouse.y = (e.clientY || e.touches[0].clientY);
-    mouse.active = true;
-};
-window.addEventListener("mousemove", updateMouse);
-window.addEventListener("touchmove", updateMouse);
-window.addEventListener("touchend", () => mouse.active = false);
-
-class Particle {
-    constructor(id) {
-        this.id = id;
-        this.reset();
-    }
-
-    reset() {
-        this.progress = Math.random(); // 0 是底部，1 是顶部
-        this.angle = this.id * 0.15; // 形成螺旋
-        this.distFromCenter = (1 - this.progress) * 250;
-        this.y3d = (this.progress * 500) - 250; // 3D Y坐标
-        
-        // 动态属性
-        this.hue = this.progress * 100 + 140; // 从深绿到霓虹青
-        this.size = Math.random() * 2 + 1;
-        this.pulse = Math.random() * Math.PI;
-    }
-
-    update() {
-        // 基础自转
-        this.angle += 0.02;
-        
-        // 核心动力学：受鼠标引力影响
-        let targetX = Math.cos(this.angle) * this.distFromCenter;
-        let targetZ = Math.sin(this.angle) * this.distFromCenter;
-        
-        // 计算 2D 投影位置用于互动检测
-        const scale = PROJECTION_DIST / (PROJECTION_DIST + targetZ + 250);
-        const screenX = targetX * scale + W / 2;
-        const screenY = this.y3d * scale + H * 0.55;
-
-        const dx = mouse.x - screenX;
-        const dy = mouse.y - screenY;
-        const dist = Math.sqrt(dx*dx + dy*dy);
-
-        if (mouse.active && dist < 150) {
-            const force = (150 - dist) / 150;
-            this.angle += force * 0.1; // 靠近手指旋转加快
-            this.size = (Math.random() * 3 + 2) * (1 + force);
-        } else {
-            this.size = Math.max(this.size * 0.95, 1.5);
-        }
-
-        // 3D 转换
-        this.rotationAngle = rotation + this.angle;
-        this.x3d = Math.cos(this.rotationAngle) * this.distFromCenter;
-        this.z3d = Math.sin(this.rotationAngle) * this.distFromCenter;
-    }
-
-    draw() {
-        const scale = PROJECTION_DIST / (PROJECTION_DIST + this.z3d + 250);
-        const x2d = this.x3d * scale + W / 2;
-        const y2d = this.y3d * scale + H * 0.55;
-
-        const alpha = Math.min(1, scale * 1.2);
-        const glow = Math.sin(Date.now() * 0.005 + this.id) * 0.5 + 0.5;
-
-        ctx.beginPath();
-        // 颜色：指尖靠近时变白，平时为青蓝渐变
-        const finalHue = mouse.active ? this.hue + glow * 50 : this.hue;
-        ctx.fillStyle = `hsla(${finalHue}, 100%, ${70 + glow * 30}%, ${alpha})`;
-        
-        // 核心发光点
-        ctx.arc(x2d, y2d, this.size * scale, 0, Math.PI * 2);
-        ctx.fill();
-
-        // 外围辉光 (Bloom)
-        if (glow > 0.8 || mouse.active) {
-            ctx.beginPath();
-            ctx.globalAlpha = 0.2 * glow;
-            ctx.arc(x2d, y2d, this.size * scale * 5, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.globalAlpha = 1;
-        }
-    }
-}
-
-// 初始化
-for (let i = 0; i < COUNT; i++) particles.push(new Particle(i));
-
-function drawStar() {
-    const starY = -290;
-    const scale = PROJECTION_DIST / (PROJECTION_DIST + 250);
-    const y2d = starY * scale + H * 0.55;
+    <div id="info">NEO-CHRISTMAS PROTOCOL: ACTIVE</div>
     
-    ctx.save();
-    ctx.translate(W / 2, y2d);
-    ctx.rotate(Date.now() * 0.001);
-    ctx.shadowBlur = 30;
-    ctx.shadowColor = "#0ff";
-    ctx.fillStyle = "#fff";
-    ctx.font = "45px serif";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText("💠", 0, 0); // 使用更具科技感的星核
-    ctx.restore();
-}
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
 
-function animate() {
-    // 关键：不要清空整个画布，而是覆盖一层极透明的黑，产生丝滑拖尾
-    ctx.globalCompositeOperation = "source-over";
-    ctx.fillStyle = "rgba(0, 0, 0, 0.08)";
-    ctx.fillRect(0, 0, W, H);
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
-    rotation += 0.005;
+        // --- 场景初始化 ---
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        document.body.appendChild(renderer.domElement);
 
-    // 叠加模式：让颜色融合产生极光感
-    ctx.globalCompositeOperation = "lighter";
+        const controls = new OrbitControls(camera, renderer.domElement);
+        camera.position.set(0, 5, 15);
+        controls.enableDamping = true;
 
-    particles.forEach(p => {
-        p.update();
-        p.draw();
-    });
+        // --- 核心逻辑：创建粒子树 ---
+        function createParticleTree() {
+            const particleCount = 15000;
+            const positions = new Float32Array(particleCount * 3);
+            const colors = new Float32Array(particleCount * 3);
+            const sizes = new Float32Array(particleCount);
 
-    drawStar();
-    requestAnimationFrame(animate);
-}
+            const colorEmerald = new THREE.Color(0x00ffaa); // 祖母绿
+            const colorBlue = new THREE.Color(0x0066ff);    // 电光蓝
 
-animate();
-</script>
+            for (let i = 0; i < particleCount; i++) {
+                // 模拟双螺旋结构
+                const t = Math.random(); 
+                const angle = t * Math.PI * 12; // 旋转圈数
+                const height = t * 12; // 高度
+                const radius = (1 - t) * 4; // 底部宽顶部窄
+
+                // 加入一些随机抖动模拟“星云尘埃”
+                const drift = (Math.random() - 0.5) * 0.5;
+                
+                const x = Math.cos(angle) * radius + drift;
+                const y = height - 5;
+                const z = Math.sin(angle) * radius + drift;
+
+                positions[i * 3] = x;
+                positions[i * 3 + 1] = y;
+                positions[i * 3 + 2] = z;
+
+                // 颜色混合 (根据高度在绿蓝之间切换)
+                const mixedColor = colorEmerald.clone().lerp(colorBlue, t);
+                colors[i * 3] = mixedColor.r;
+                colors[i * 3 + 1] = mixedColor.g;
+                colors[i * 3 + 2] = mixedColor.b;
+
+                sizes[i] = Math.random() * 2;
+            }
+
+            const geometry = new THREE.BufferGeometry();
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+            geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+
+            const material = new THREE.PointsMaterial({
+                size: 0.05,
+                vertexColors: true,
+                transparent: true,
+                opacity: 0.8,
+                blending: THREE.AdditiveBlending, // 增强发光感
+                sizeAttenuation: true
+            });
+
+            return new THREE.Points(geometry, material);
+        }
+
+        const tree = createParticleTree();
+        scene.add(tree);
+
+        // --- 环境光效 ---
+        const light = new THREE.PointLight(0x00ffaa, 2, 50);
+        light.position.set(0, 5, 0);
+        scene.add(light);
+
+        // --- 动画循环 ---
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // 让树缓慢旋转
+            tree.rotation.y += 0.002;
+            
+            // 模拟粒子脉动
+            const time = Date.now() * 0.001;
+            tree.geometry.attributes.position.array.forEach((v, i) => {
+                if(i % 3 === 1) { // 扰动 Y 轴
+                    tree.geometry.attributes.position.array[i] += Math.sin(time + i) * 0.002;
+                }
+            });
+            tree.geometry.attributes.position.needsUpdate = true;
+
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        // 响应式调整
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+    </script>
 </body>
 </html>
