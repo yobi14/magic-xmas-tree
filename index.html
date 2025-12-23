@@ -1,20 +1,21 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-    <meta charset="UTF-8" />
+    <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-    <title>3D 魔法粒子圣诞树</title>
+    <title>Cyber Xmas 2025</title>
     <style>
-        html, body { margin: 0; padding: 0; background: #000; overflow: hidden; touch-action: none; }
-        canvas { display: block; }
-        #hint {
-            position: absolute; bottom: 20px; width: 100%; text-align: center;
-            color: rgba(255,255,255,0.4); font-family: sans-serif; pointer-events: none;
+        body { margin: 0; background: #000; overflow: hidden; touch-action: none; }
+        canvas { display: block; filter: contrast(120%) brightness(110%); }
+        #overlay {
+            position: absolute; bottom: 30px; width: 100%; text-align: center;
+            color: #fff; font-family: 'Orbitron', sans-serif; letter-spacing: 5px;
+            pointer-events: none; text-shadow: 0 0 20px #0ff; opacity: 0.6;
         }
     </style>
 </head>
 <body>
-    <div id="hint">左右滑动旋转 3D 视角</div>
+    <div id="overlay">NEO-CHRISTMAS 2025</div>
     <canvas id="canvas"></canvas>
 
 <script>
@@ -22,120 +23,144 @@ const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
 
 let W, H;
-let cameraRotation = 0; // 相机旋转角度
-let targetRotation = 0;
-const particles = [];
-const COUNT = 1800; // 粒子数量增加
-
-// 3D 投影配置
-const perspective = 500; 
-const treeRadius = 220;
-const treeHeight = 450;
+let particles = [];
+const COUNT = 2200; 
+const PROJECTION_DIST = 400; 
+let rotation = 0;
+let mouse = { x: -1000, y: -1000, active: false };
 
 function resize() {
     W = canvas.width = window.innerWidth;
     H = canvas.height = window.innerHeight;
 }
-resize();
 window.addEventListener("resize", resize);
+resize();
 
-let mouseX = 0;
-document.addEventListener("mousemove", e => {
-    targetRotation = (e.clientX - W / 2) * 0.005;
-});
-document.addEventListener("touchmove", e => {
-    targetRotation = (e.touches[0].clientX - W / 2) * 0.005;
-}, { passive: false });
+// 交互监听
+const updateMouse = (e) => {
+    mouse.x = (e.clientX || e.touches[0].clientX);
+    mouse.y = (e.clientY || e.touches[0].clientY);
+    mouse.active = true;
+};
+window.addEventListener("mousemove", updateMouse);
+window.addEventListener("touchmove", updateMouse);
+window.addEventListener("touchend", () => mouse.active = false);
 
 class Particle {
-    constructor() {
-        // 3D 空间坐标
-        const t = Math.random(); // 高度比例
-        const angle = Math.random() * Math.PI * 2; // 绕树的角度
-        const radius = (1 - t) * treeRadius; // 越往上半径越小
+    constructor(id) {
+        this.id = id;
+        this.reset();
+    }
+
+    reset() {
+        this.progress = Math.random(); // 0 是底部，1 是顶部
+        this.angle = this.id * 0.15; // 形成螺旋
+        this.distFromCenter = (1 - this.progress) * 250;
+        this.y3d = (this.progress * 500) - 250; // 3D Y坐标
         
-        this.lx = Math.cos(angle) * radius; // 本地 X
-        this.ly = (t * treeHeight) - treeHeight / 2; // 本地 Y (居中)
-        this.lz = Math.sin(angle) * radius; // 本地 Z
-        
-        this.color = `hsla(${120 + Math.random() * 40}, 100%, 70%,`; // 绿色系
-        if(Math.random() > 0.9) this.color = `hsla(${Math.random() * 50 + 10}, 100%, 80%,`; // 金色装饰点
-        
+        // 动态属性
+        this.hue = this.progress * 100 + 140; // 从深绿到霓虹青
         this.size = Math.random() * 2 + 1;
-        this.offset = Math.random() * Math.PI * 2;
+        this.pulse = Math.random() * Math.PI;
+    }
+
+    update() {
+        // 基础自转
+        this.angle += 0.02;
+        
+        // 核心动力学：受鼠标引力影响
+        let targetX = Math.cos(this.angle) * this.distFromCenter;
+        let targetZ = Math.sin(this.angle) * this.distFromCenter;
+        
+        // 计算 2D 投影位置用于互动检测
+        const scale = PROJECTION_DIST / (PROJECTION_DIST + targetZ + 250);
+        const screenX = targetX * scale + W / 2;
+        const screenY = this.y3d * scale + H * 0.55;
+
+        const dx = mouse.x - screenX;
+        const dy = mouse.y - screenY;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+
+        if (mouse.active && dist < 150) {
+            const force = (150 - dist) / 150;
+            this.angle += force * 0.1; // 靠近手指旋转加快
+            this.size = (Math.random() * 3 + 2) * (1 + force);
+        } else {
+            this.size = Math.max(this.size * 0.95, 1.5);
+        }
+
+        // 3D 转换
+        this.rotationAngle = rotation + this.angle;
+        this.x3d = Math.cos(this.rotationAngle) * this.distFromCenter;
+        this.z3d = Math.sin(this.rotationAngle) * this.distFromCenter;
     }
 
     draw() {
-        // 1. 应用相机旋转 (绕 Y 轴)
-        const cosR = Math.cos(cameraRotation);
-        const sinR = Math.sin(cameraRotation);
-        
-        // 旋转后的坐标
-        const rx = this.lx * cosR - this.lz * sinR;
-        const rz = this.lx * sinR + this.lz * cosR;
-        const ry = this.ly;
+        const scale = PROJECTION_DIST / (PROJECTION_DIST + this.z3d + 250);
+        const x2d = this.x3d * scale + W / 2;
+        const y2d = this.y3d * scale + H * 0.55;
 
-        // 2. 3D 投影到 2D 平面
-        const scale = perspective / (perspective + rz + treeRadius);
-        const screenX = rx * scale + W / 2;
-        const screenY = ry * scale + H * 0.6; // 稍微下移
-        
-        // 3. 渲染效果
-        const opacity = (rz + treeRadius) / (treeRadius * 2); // 简单的深度感
-        const glow = Math.sin(Date.now() * 0.002 + this.offset) * 0.5 + 0.5;
+        const alpha = Math.min(1, scale * 1.2);
+        const glow = Math.sin(Date.now() * 0.005 + this.id) * 0.5 + 0.5;
 
         ctx.beginPath();
-        ctx.fillStyle = this.color + (0.3 + glow * 0.7) + ")";
+        // 颜色：指尖靠近时变白，平时为青蓝渐变
+        const finalHue = mouse.active ? this.hue + glow * 50 : this.hue;
+        ctx.fillStyle = `hsla(${finalHue}, 100%, ${70 + glow * 30}%, ${alpha})`;
         
-        // 越靠近相机的点越大
-        const drawSize = this.size * scale * (1 + glow * 0.5);
-        ctx.arc(screenX, screenY, drawSize, 0, Math.PI * 2);
+        // 核心发光点
+        ctx.arc(x2d, y2d, this.size * scale, 0, Math.PI * 2);
         ctx.fill();
+
+        // 外围辉光 (Bloom)
+        if (glow > 0.8 || mouse.active) {
+            ctx.beginPath();
+            ctx.globalAlpha = 0.2 * glow;
+            ctx.arc(x2d, y2d, this.size * scale * 5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.globalAlpha = 1;
+        }
     }
 }
 
 // 初始化
-for (let i = 0; i < COUNT; i++) particles.push(new Particle());
+for (let i = 0; i < COUNT; i++) particles.push(new Particle(i));
 
 function drawStar() {
-    const t = -treeHeight / 2 - 40;
-    const cosR = Math.cos(cameraRotation * 2); // 星星独立旋转
-    const scale = perspective / (perspective + treeRadius);
-    const screenX = W / 2;
-    const screenY = t * scale + H * 0.6;
-
+    const starY = -290;
+    const scale = PROJECTION_DIST / (PROJECTION_DIST + 250);
+    const y2d = starY * scale + H * 0.55;
+    
     ctx.save();
-    ctx.translate(screenX, screenY);
+    ctx.translate(W / 2, y2d);
     ctx.rotate(Date.now() * 0.001);
-    ctx.shadowBlur = 20;
-    ctx.shadowColor = "gold";
-    ctx.fillStyle = "gold";
-    ctx.font = "40px serif";
+    ctx.shadowBlur = 30;
+    ctx.shadowColor = "#0ff";
+    ctx.fillStyle = "#fff";
+    ctx.font = "45px serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText("⭐", 0, 0);
+    ctx.fillText("💠", 0, 0); // 使用更具科技感的星核
     ctx.restore();
 }
 
 function animate() {
-    // 渐淡效果营造粒子拖尾感
-    ctx.fillStyle = "rgba(0, 0, 0, 0.15)";
+    // 关键：不要清空整个画布，而是覆盖一层极透明的黑，产生丝滑拖尾
+    ctx.globalCompositeOperation = "source-over";
+    ctx.fillStyle = "rgba(0, 0, 0, 0.08)";
     ctx.fillRect(0, 0, W, H);
 
-    // 平滑相机旋转
-    cameraRotation += (targetRotation - cameraRotation) * 0.05;
-    cameraRotation += 0.005; // 自动匀速自转
+    rotation += 0.005;
 
-    // 开启高亮叠加模式，增加“闪烁”感
+    // 叠加模式：让颜色融合产生极光感
     ctx.globalCompositeOperation = "lighter";
-    
-    // 为了 3D 遮挡感，我们先对粒子按深度排序（简单模拟）
-    // 这里的粒子是实时计算投影的，为了炫酷效果直接绘制
-    particles.forEach(p => p.draw());
 
-    ctx.globalCompositeOperation = "source-over";
+    particles.forEach(p => {
+        p.update();
+        p.draw();
+    });
+
     drawStar();
-    
     requestAnimationFrame(animate);
 }
 
