@@ -1,137 +1,112 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html>
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>✨ 魔法圣诞树 (稳定版) ✨</title>
+    <title>Mac Chrome 魔法圣诞树</title>
     <style>
-        body { margin: 0; background: #000; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-        canvas { position: absolute; top: 0; left: 0; }
-        #video { position: absolute; width: 1px; height: 1px; opacity: 0; }
-        #status {
-            position: absolute; top: 40%; width: 100%; text-align: center;
-            color: #ffd700; font-size: 1.1rem; z-index: 100;
-            background: rgba(0,0,0,0.6); padding: 10px 0;
-        }
-        #btn-start {
-            position: absolute; bottom: 20%; left: 50%; transform: translateX(-50%);
-            padding: 12px 24px; background: gold; color: #000; border: none;
-            border-radius: 25px; font-weight: bold; cursor: pointer; display: none; z-index: 101;
-        }
+        body { margin: 0; background: #000; color: #fff; overflow: hidden; font-family: sans-serif; }
+        canvas { position: absolute; top: 0; left: 0; z-index: 1; }
+        #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 10; pointer-events: none; }
+        #status { background: rgba(0,0,0,0.8); padding: 15px 30px; border-radius: 50px; border: 1px solid gold; color: gold; text-align: center; }
+        #btn-start { margin-top: 20px; padding: 15px 40px; background: gold; color: #000; border: none; border-radius: 50px; font-weight: bold; cursor: pointer; pointer-events: auto; display: none; box-shadow: 0 0 20px gold; }
+        #video { position: absolute; bottom: 10px; right: 10px; width: 160px; height: 120px; border: 2px solid #333; transform: scaleX(-1); z-index: 5; background: #222; }
     </style>
 </head>
 <body>
 
-    <div id="status">🔮 正在唤醒魔法 (下载资源中)...</div>
-    <button id="btn-start" onclick="startMagic()">点击开启魔法</button>
+    <div id="ui-layer">
+        <div id="status">正在同步魔法资源 (WASM)...</div>
+        <button id="btn-start" onclick="initCamera()">立即开启摄像头</button>
+    </div>
+    
     <video id="video" playsinline></video>
     <canvas id="canvas"></canvas>
 
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1646424515/hands.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
 
     <script>
-        const statusText = document.getElementById('status');
-        const startBtn = document.getElementById('btn-start');
-        const videoElement = document.getElementById('video');
-        const canvasElement = document.getElementById('canvas');
-        const canvasCtx = canvasElement.getContext('2d');
+        const statusEl = document.getElementById('status');
+        const btnStart = document.getElementById('btn-start');
+        const videoEl = document.getElementById('video');
+        const canvasEl = document.getElementById('canvas');
+        const ctx = canvasEl.getContext('2d');
 
-        let width, height, particles = [];
-        let fingerX = -100, fingerY = -100, isDetected = false;
+        let hands, camera, fingerX = -100, fingerY = -100, active = false;
 
-        function resize() {
-            width = canvasElement.width = window.innerWidth;
-            height = canvasElement.height = window.innerHeight;
-            initTree();
-        }
-        window.addEventListener('resize', resize);
-        resize();
-
-        function initTree() {
-            particles = [];
-            const centerX = width / 2;
-            const treeH = Math.min(height * 0.6, 500);
-            const bottom = height * 0.8;
-            for (let i = 0; i < 3000; i++) {
-                const r = Math.random();
-                const h = r * treeH;
-                const w = (h / treeH) * (treeH * 0.5);
-                particles.push({
-                    x: centerX + (Math.random() - 0.5) * 2 * w,
-                    y: bottom - h,
-                    c: `hsl(${120 + Math.random() * 40}, 100%, ${20 + Math.random() * 30}%)`,
-                    s: Math.random() * 2,
-                    o: Math.random()
-                });
-            }
-        }
-
+        // 基础绘制循环 (让树先显示)
         function draw() {
-            canvasCtx.clearRect(0, 0, width, height);
-            // 画星星
-            canvasCtx.font = "40px serif";
-            canvasCtx.textAlign = "center";
-            canvasCtx.shadowBlur = 15; canvasCtx.shadowColor = "gold";
-            canvasCtx.fillText("⭐", width/2, height * 0.8 - Math.min(height * 0.6, 500) - 20);
+            ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
+            const centerX = canvasEl.width / 2;
+            const bottom = canvasEl.height * 0.8;
             
-            particles.forEach(p => {
-                const dx = fingerX - p.x;
-                const dy = fingerY - p.y;
-                const dist = Math.sqrt(dx*dx + dy*dy);
-                const isNear = isDetected && dist < 80;
+            // 绘制星星
+            ctx.font = "50px serif"; ctx.textAlign = "center";
+            ctx.shadowBlur = active ? 25 : 5; ctx.shadowColor = "gold";
+            ctx.fillText("⭐", centerX, bottom - 420);
 
-                canvasCtx.globalAlpha = isNear ? 1 : p.o;
-                canvasCtx.fillStyle = isNear ? "#fff" : p.c;
-                canvasCtx.beginPath();
-                canvasCtx.arc(p.x, p.y, isNear ? p.s + 2 : p.s, 0, Math.PI*2);
-                canvasCtx.fill();
-            });
+            // 绘制粒子树 (简化版)
+            for(let i=0; i<2000; i++) {
+                const h = Math.random() * 400;
+                const w = (h/400) * 200;
+                const px = centerX + (Math.random()-0.5)*2*w;
+                const py = bottom - h;
+                
+                const dist = Math.sqrt((px-fingerX)**2 + (py-fingerY)**2);
+                const isNear = active && dist < 80;
+                
+                ctx.fillStyle = isNear ? "#fff" : `hsl(120, 100%, ${20 + Math.random()*20}%)`;
+                ctx.globalAlpha = isNear ? 1 : 0.4;
+                ctx.beginPath();
+                ctx.arc(px, py, isNear ? 3 : 1.5, 0, Math.PI*2);
+                ctx.fill();
+            }
             requestAnimationFrame(draw);
         }
 
-        // 初始化手势识别
-        const hands = new Hands({
-            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1646424515/${file}`
-        });
+        // 初始化资源
+        window.onload = () => {
+            canvasEl.width = window.innerWidth;
+            canvasEl.height = window.innerHeight;
+            
+            try {
+                hands = new Hands({
+                    locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+                });
+                hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.5 });
+                hands.onResults(res => {
+                    if (res.multiHandLandmarks && res.multiHandLandmarks.length > 0) {
+                        const p = res.multiHandLandmarks[0][8];
+                        fingerX = (1 - p.x) * canvasEl.width;
+                        fingerY = p.y * canvasEl.height;
+                        active = true;
+                    } else { active = false; }
+                });
+                
+                statusEl.innerText = "✅ 魔法资源就绪";
+                btnStart.style.display = "block";
+                draw();
+            } catch (e) {
+                statusEl.innerText = "❌ 资源加载失败: " + e.message;
+            }
+        };
 
-        hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.5 });
-        hands.onResults(results => {
-            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-                const point = results.multiHandLandmarks[0][8];
-                fingerX = (1 - point.x) * width;
-                fingerY = point.y * height;
-                isDetected = true;
-            } else { isDetected = false; }
-        });
-
-        // 核心：处理摄像头和库的加载
-        async function startMagic() {
-            startBtn.style.display = 'none';
-            statusText.innerText = "正在唤起相机...";
-            const camera = new Camera(videoElement, {
-                onFrame: async () => { await hands.send({image: videoElement}); },
+        async function initCamera() {
+            statusEl.innerText = "正在请求摄像头权限...";
+            btnStart.style.display = "none";
+            
+            camera = new Camera(videoEl, {
+                onFrame: async () => { await hands.send({image: videoEl}); },
                 width: 640, height: 480
             });
-            camera.start().then(() => {
-                statusText.style.display = "none";
-            }).catch(() => {
-                statusText.innerText = "❌ 相机启动失败，请检查设置或使用其他浏览器";
-            });
-        }
 
-        // 检查加载状态
-        window.onload = () => {
-            let checkLoad = setInterval(() => {
-                // 如果 Hands 库加载成功，通常它会挂载在 window 上
-                if (typeof Hands !== 'undefined') {
-                    clearInterval(checkLoad);
-                    statusText.innerText = "✅ 资源已就绪";
-                    startBtn.style.display = "block";
-                    draw(); // 先开始画树
-                }
-            }, 500);
-        };
+            camera.start()
+                .then(() => { statusEl.style.display = "none"; })
+                .catch(err => {
+                    statusEl.innerText = "❌ 摄像头开启失败！请在 Chrome 地址栏左侧开启权限并刷新。";
+                    console.error(err);
+                });
+        }
     </script>
 </body>
 </html>
