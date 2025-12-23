@@ -2,22 +2,34 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>Mac Chrome 魔法圣诞树</title>
+    <title>✨ 抖音同款·魔法粒子圣诞树 ✨</title>
     <style>
-        body { margin: 0; background: #000; color: #fff; overflow: hidden; font-family: sans-serif; }
-        canvas { position: absolute; top: 0; left: 0; z-index: 1; }
-        #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 10; pointer-events: none; }
-        #status { background: rgba(0,0,0,0.8); padding: 15px 30px; border-radius: 50px; border: 1px solid gold; color: gold; text-align: center; }
-        #btn-start { margin-top: 20px; padding: 15px 40px; background: gold; color: #000; border: none; border-radius: 50px; font-weight: bold; cursor: pointer; pointer-events: auto; display: none; box-shadow: 0 0 20px gold; }
-        #video { position: absolute; bottom: 10px; right: 10px; width: 160px; height: 120px; border: 2px solid #333; transform: scaleX(-1); z-index: 5; background: #222; }
+        body { margin: 0; background: #000; overflow: hidden; font-family: 'PingFang SC', sans-serif; }
+        canvas { position: absolute; top: 0; left: 0; }
+        #ui {
+            position: absolute; top: 30px; width: 100%; text-align: center;
+            z-index: 100; pointer-events: none;
+        }
+        h1 {
+            color: #fff; font-weight: 200; letter-spacing: 5px;
+            text-shadow: 0 0 20px rgba(255,255,255,0.5); margin: 0;
+        }
+        #btn-start {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            padding: 20px 50px; background: transparent; color: gold;
+            border: 2px solid gold; border-radius: 50px; font-size: 1.2rem;
+            cursor: pointer; pointer-events: auto; transition: 0.3s; z-index: 101;
+        }
+        #btn-start:hover { background: gold; color: #000; box-shadow: 0 0 30px gold; }
+        #video { position: absolute; bottom: 10px; right: 10px; width: 120px; opacity: 0.2; transform: scaleX(-1); border-radius: 10px; }
     </style>
 </head>
 <body>
 
-    <div id="ui-layer">
-        <div id="status">正在同步魔法资源 (WASM)...</div>
-        <button id="btn-start" onclick="initCamera()">立即开启摄像头</button>
+    <div id="ui">
+        <h1>MERRY CHRISTMAS</h1>
     </div>
+    <button id="btn-start" onclick="init()">开启魔法</button>
     
     <video id="video" playsinline></video>
     <canvas id="canvas"></canvas>
@@ -26,87 +38,148 @@
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
 
     <script>
-        const statusEl = document.getElementById('status');
-        const btnStart = document.getElementById('btn-start');
-        const videoEl = document.getElementById('video');
-        const canvasEl = document.getElementById('canvas');
-        const ctx = canvasEl.getContext('2d');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const video = document.getElementById('video');
+        let width, height, hands, camera;
+        let particles = [];
+        let finger = { x: -100, y: -100, active: false };
+        let magicDust = []; // 指尖散落的仙尘
 
-        let hands, camera, fingerX = -100, fingerY = -100, active = false;
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            createTree();
+        }
 
-        // 基础绘制循环 (让树先显示)
-        function draw() {
-            ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
-            const centerX = canvasEl.width / 2;
-            const bottom = canvasEl.height * 0.8;
-            
-            // 绘制星星
-            ctx.font = "50px serif"; ctx.textAlign = "center";
-            ctx.shadowBlur = active ? 25 : 5; ctx.shadowColor = "gold";
-            ctx.fillText("⭐", centerX, bottom - 420);
-
-            // 绘制粒子树 (简化版)
-            for(let i=0; i<2000; i++) {
-                const h = Math.random() * 400;
-                const w = (h/400) * 200;
-                const px = centerX + (Math.random()-0.5)*2*w;
-                const py = bottom - h;
+        class TreeParticle {
+            constructor(x, y, color, size, angle) {
+                this.x = x; this.y = y;
+                this.baseX = x; this.baseY = y;
+                this.color = color;
+                this.size = size;
+                this.angle = angle;
+                this.brightness = 1;
+            }
+            update() {
+                const dx = finger.x - this.x;
+                const dy = finger.y - this.y;
+                const dist = Math.sqrt(dx*dx + dy*dy);
                 
-                const dist = Math.sqrt((px-fingerX)**2 + (py-fingerY)**2);
-                const isNear = active && dist < 80;
-                
-                ctx.fillStyle = isNear ? "#fff" : `hsl(120, 100%, ${20 + Math.random()*20}%)`;
-                ctx.globalAlpha = isNear ? 1 : 0.4;
+                if (finger.active && dist < 120) {
+                    this.brightness = 3 - (dist / 60);
+                    const force = (120 - dist) / 120;
+                    this.x += dx * force * 0.1;
+                    this.y += dy * force * 0.1;
+                } else {
+                    this.brightness = 0.8 + Math.sin(Date.now() * 0.002 + this.angle) * 0.2;
+                    this.x += (this.baseX - this.x) * 0.1;
+                    this.y += (this.baseY - this.y) * 0.1;
+                }
+            }
+            draw() {
+                ctx.fillStyle = this.color;
+                ctx.globalAlpha = Math.min(this.brightness, 1);
                 ctx.beginPath();
-                ctx.arc(px, py, isNear ? 3 : 1.5, 0, Math.PI*2);
+                ctx.arc(this.x, this.y, this.size * Math.max(1, this.brightness * 0.5), 0, Math.PI * 2);
                 ctx.fill();
             }
-            requestAnimationFrame(draw);
         }
 
-        // 初始化资源
-        window.onload = () => {
-            canvasEl.width = window.innerWidth;
-            canvasEl.height = window.innerHeight;
-            
-            try {
-                hands = new Hands({
-                    locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
-                });
-                hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.5 });
-                hands.onResults(res => {
-                    if (res.multiHandLandmarks && res.multiHandLandmarks.length > 0) {
-                        const p = res.multiHandLandmarks[0][8];
-                        fingerX = (1 - p.x) * canvasEl.width;
-                        fingerY = p.y * canvasEl.height;
-                        active = true;
-                    } else { active = false; }
-                });
-                
-                statusEl.innerText = "✅ 魔法资源就绪";
-                btnStart.style.display = "block";
-                draw();
-            } catch (e) {
-                statusEl.innerText = "❌ 资源加载失败: " + e.message;
-            }
-        };
+        function createTree() {
+            particles = [];
+            const centerX = width / 2;
+            const bottom = height * 0.85;
+            const treeHeight = Math.min(height * 0.65, 600);
 
-        async function initCamera() {
-            statusEl.innerText = "正在请求摄像头权限...";
-            btnStart.style.display = "none";
+            // 核心算法：螺旋式排列粒子
+            for (let i = 0; i < 3500; i++) {
+                const progress = i / 3500;
+                const angle = i * 0.2; // 旋转角度
+                const spiralRadius = (1 - progress) * (treeHeight * 0.4);
+                const x = centerX + Math.cos(angle) * spiralRadius;
+                const y = bottom - (progress * treeHeight);
+                
+                // 颜色模型：深绿到荧光绿，偶尔穿插金色和红点
+                let hue = 120 + Math.random() * 40;
+                let saturation = 80;
+                let light = 30 + (1 - progress) * 20;
+                
+                if (Math.random() > 0.98) { hue = 45; light = 70; } // 金色
+                if (Math.random() > 0.99) { hue = 0; light = 60; }  // 红色点缀
+
+                particles.push(new TreeParticle(x, y, `hsl(${hue}, ${saturation}%, ${light}%)`, Math.random() * 2 + 0.5, angle));
+            }
+        }
+
+        // 指尖散出的仙尘粒子
+        function createMagicDust() {
+            if (finger.active) {
+                for(let i=0; i<3; i++) {
+                    magicDust.push({
+                        x: finger.x, y: finger.y,
+                        vx: (Math.random()-0.5)*4, vy: (Math.random()-0.5)*4,
+                        life: 1, color: `hsl(${Math.random()*360}, 100%, 70%)`
+                    });
+                }
+            }
+            magicDust = magicDust.filter(p => p.life > 0);
+            magicDust.forEach(p => {
+                p.x += p.vx; p.y += p.vy; p.life -= 0.02;
+                ctx.fillStyle = p.color;
+                ctx.globalAlpha = p.life;
+                ctx.beginPath(); ctx.arc(p.x, p.y, 2, 0, Math.PI*2); ctx.fill();
+            });
+        }
+
+        function render() {
+            // 使用 lighter 叠加模式产生辉光
+            ctx.globalCompositeOperation = 'source-over';
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.15)';
+            ctx.fillRect(0, 0, width, height);
             
-            camera = new Camera(videoEl, {
-                onFrame: async () => { await hands.send({image: videoEl}); },
-                width: 640, height: 480
+            ctx.globalCompositeOperation = 'lighter';
+            
+            // 画顶部的星星
+            const starY = height * 0.85 - Math.min(height * 0.65, 600) - 30;
+            ctx.shadowBlur = 30; ctx.shadowColor = "gold";
+            ctx.fillStyle = "gold"; ctx.font = "60px serif";
+            ctx.textAlign = "center"; ctx.fillText("⭐", width/2, starY);
+            ctx.shadowBlur = 0;
+
+            particles.forEach(p => {
+                p.update();
+                p.draw();
             });
 
-            camera.start()
-                .then(() => { statusEl.style.display = "none"; })
-                .catch(err => {
-                    statusEl.innerText = "❌ 摄像头开启失败！请在 Chrome 地址栏左侧开启权限并刷新。";
-                    console.error(err);
-                });
+            createMagicDust();
+            requestAnimationFrame(render);
         }
+
+        async function init() {
+            document.getElementById('btn-start').style.display = 'none';
+            resize();
+            
+            hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
+            hands.setOptions({maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.6});
+            hands.onResults(res => {
+                if (res.multiHandLandmarks && res.multiHandLandmarks.length > 0) {
+                    const p = res.multiHandLandmarks[0][8];
+                    finger.x = (1 - p.x) * width;
+                    finger.y = p.y * height;
+                    finger.active = true;
+                } else { finger.active = false; }
+            });
+
+            camera = new Camera(video, {
+                onFrame: async () => { await hands.send({image: video}); },
+                width: 640, height: 480
+            });
+            camera.start();
+            render();
+        }
+
+        window.addEventListener('resize', resize);
     </script>
 </body>
 </html>
